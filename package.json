@@ -1,0 +1,19 @@
+{
+  "name": "wordchain-userbot",
+  "version": "1.0.0",
+  "description": "Personal learning project: a Telegram userbot that auto-plays on9wordchainbot as a virtual player in a private group.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "login": "node login.js",
+    "prepare-words": "node prepareWords.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "telegram": "^2.22.2",
+    "dotenv": "^16.4.5",
+    "input": "^1.0.1",
+    "node-fetch": "^2.7.0"
+  },
+  "license": "ISC"
+}

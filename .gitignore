@@ -1,0 +1,21 @@
+# Secrets and local Telegram credentials
+.env
+
+# Installed dependencies (recreated with npm ci)
+node_modules/
+
+# Generated/runtime state
+words.json
+settings.json
+
+# Local Codex workspace metadata
+.agents/
+.codex/
+.gitdata/
+
+# Runtime and editor clutter
+*.log
+npm-debug.log*
+.DS_Store
+*.swp
+*~
