@@ -14,14 +14,17 @@ class WordPicker {
     this.used.add(word.toLowerCase());
   }
 
-  // Returns a random valid word starting with `letter`, length >= minLen,
-  // that hasn't been used yet, optionally also:
+  // Returns a word starting with `letter`, length >= minLen, that hasn't
+  // been used yet, optionally also:
   //   - containing `requiredLetter` (Required Letter mode)
   //   - containing none of `bannedLetters` (Banned Letters mode)
   //   - ending with `preferredEndLetter`, if one is set (falls back to
   //     normal selection if no word satisfies it, so it never stalls)
-  // Prefers shorter/common-length words first so it doesn't burn long/rare
-  // words immediately, but shuffles within each length bucket.
+  //
+  // Selection is WEIGHTED toward shorter lengths rather than strictly
+  // shortest-first or flat-random across everything — mimics how a real
+  // person's vocabulary skews toward common/shorter words, with longer
+  // words picked occasionally rather than never or constantly.
   pick(letter, minLen = 1, { requiredLetter = null, bannedLetters = [], preferredEndLetter = null } = {}) {
     letter = letter.toLowerCase();
     const byLength = this.index[letter];
@@ -35,41 +38,61 @@ class WordPicker {
       .filter((l) => l >= minLen)
       .sort((a, b) => a - b);
 
-    const filterCandidates = (len, requireEndLetter) => {
-      let candidates = byLength[len].filter((w) => !this.used.has(w));
+    const buildFiltered = (len) => {
+      let words = byLength[len].filter((w) => !this.used.has(w));
       if (requiredLetter) {
-        candidates = candidates.filter((w) => w.includes(requiredLetter.toLowerCase()));
+        words = words.filter((w) => w.includes(requiredLetter.toLowerCase()));
       }
       if (bannedSet.size > 0) {
-        candidates = candidates.filter((w) => ![...w].some((c) => bannedSet.has(c)));
+        words = words.filter((w) => ![...w].some((c) => bannedSet.has(c)));
       }
-      if (requireEndLetter && endLetter) {
-        candidates = candidates.filter((w) => w.endsWith(endLetter));
+      return words;
+    };
+
+    // Weight each length bucket: shorter = far more likely, longer = rarer.
+    // Decay of 0.55 per extra letter beyond the shortest available length.
+    // Lower this number for a stronger short-word bias, raise it for more
+    // length variety.
+    const DECAY = 0.55;
+
+    const pickFromPool = (requireEndLetter) => {
+      const buckets = [];
+      let totalWeight = 0;
+
+      lengths.forEach((len, i) => {
+        let words = buildFiltered(len);
+        if (requireEndLetter && endLetter) {
+          words = words.filter((w) => w.endsWith(endLetter));
+        }
+        if (words.length === 0) return;
+
+        const weight = Math.pow(DECAY, i);
+        buckets.push({ words, weight });
+        totalWeight += weight;
+      });
+
+      if (buckets.length === 0) return null;
+
+      let r = Math.random() * totalWeight;
+      for (const b of buckets) {
+        if (r < b.weight) {
+          return b.words[Math.floor(Math.random() * b.words.length)];
+        }
+        r -= b.weight;
       }
-      return candidates;
+      return buckets[buckets.length - 1].words[0]; // fallback, shouldn't hit
     };
 
     // Pass 1: try to honor the end-letter preference, if any.
     if (endLetter) {
-      for (const len of lengths) {
-        const candidates = filterCandidates(len, true);
-        if (candidates.length > 0) {
-          return candidates[Math.floor(Math.random() * candidates.length)];
-        }
-      }
+      const withEndLetter = pickFromPool(true);
+      if (withEndLetter) return withEndLetter;
       // No word satisfies the preference — fall through to normal pick
       // rather than stalling the turn.
     }
 
-    // Pass 2: normal pick (also the only pass when no preference is set).
-    for (const len of lengths) {
-      const candidates = filterCandidates(len, false);
-      if (candidates.length > 0) {
-        return candidates[Math.floor(Math.random() * candidates.length)];
-      }
-    }
-
-    return null; // No valid word left at all — genuinely stuck
+    // Pass 2: normal weighted pick (also the only pass when no preference is set).
+    return pickFromPool(false);
   }
 }
 
