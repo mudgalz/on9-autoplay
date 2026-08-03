@@ -4,10 +4,14 @@ const settings = require("./settings");
 // Registers a listener on the client's own Saved Messages chat.
 // Only messages sent there (by you, to yourself) are ever read as commands —
 // this can never collide with a group, another bot, or a real contact.
+//
+// No confirmation replies are sent. Instead, a successfully-applied command
+// simply deletes itself — the message disappearing IS the confirmation.
+// If a command is malformed (bad usage) or is just a status query, the
+// message is left alone so you still get visible feedback.
 function registerControlListener(client, myId) {
   client.addEventHandler(async (event) => {
     const message = event.message;
-
     if (!message) return;
     if (message.chatId.toString() !== myId.toString()) return; // only in Saved Messages
 
@@ -15,35 +19,39 @@ function registerControlListener(client, myId) {
     if (!text.startsWith(".")) return;
 
     const [cmd, ...args] = text.slice(1).split(/\s+/);
-    let reply = null;
+    let success = false;
 
     switch (cmd.toLowerCase()) {
       case "endletter": {
         const arg = (args[0] || "").toLowerCase();
         if (!arg) {
-          reply = `Current end-letter preference: ${settings.endLetter || "random"}`;
+          // Status query — nothing to apply, so leave a visible reply.
+          await client.sendMessage("me", {
+            message: `Current end-letter preference: ${settings.endLetter || "random"}`,
+          });
         } else if (arg === "random" || arg === "off") {
           settings.setEndLetter(null);
-          reply = "End-letter preference cleared. Back to random.";
+          success = true;
         } else if (/^[a-z]$/.test(arg)) {
           settings.setEndLetter(arg);
-          reply = `End-letter preference set to "${arg}". Applies immediately, including your current turn if you haven't answered yet.`;
+          success = true;
         } else {
-          reply = "Usage: .endletter <a-z>  or  .endletter random";
+          await client.sendMessage("me", {
+            message: "Usage: .endletter <a-z>  or  .endletter random",
+          });
         }
         break;
       }
 
       case "stop": {
         settings.setPaused(true);
-        reply =
-          "Paused. I will not answer any turns until you send .start — your current turn will just run out of time.";
+        success = true;
         break;
       }
 
       case "start": {
         settings.setPaused(false);
-        reply = "Resumed. Auto-answering is back on.";
+        success = true;
         break;
       }
 
@@ -51,8 +59,8 @@ function registerControlListener(client, myId) {
         return; // Not a recognized command — ignore silently
     }
 
-    if (reply) {
-      await client.sendMessage("me", { message: reply });
+    if (success) {
+      await client.deleteMessages("me", [message.id], { revoke: true });
     }
   }, new NewMessage({}));
 }
